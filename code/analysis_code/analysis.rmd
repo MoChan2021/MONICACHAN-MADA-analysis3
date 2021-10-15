@@ -1,0 +1,92 @@
+---
+title: "analysis"
+author: "MYC"
+date: "10/15/2021"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+First loading all the default settings and preliminary programs.
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse) #for data processing
+library(here) #to set paths
+library(tidymodels)  # for the parsnip package, along with the rest of tidymodels
+# Helper packages
+library(readr)       # for importing data
+library(broom.mixed) # for converting bayesian models to tidy tibbles
+```
+
+Path to Processed Data and loading of cleaned data
+```{r}
+data_location <- here::here("data","processed_data","processeddata.rds")
+data<- readRDS(data_location)
+
+glimpse(data)
+```
+
+Selection for RunnyNose and previous symptoms
+```{r}
+analysis<-
+  data%>%
+  select(BodyTemp, RunnyNose, Nausea, CoughYN,Pharyngitis, Vomit, Diarrhea)
+glimpse(analysis)  
+```
+########
+##Model Fitting
+
+Create my linear models using tidymodels
+
+Linear Models
+```{r}
+lm.model <- linear_reg() %>% set_engine("lm")
+```
+
+Linear regression for BodyTemp and RunnyNose
+```{r}
+lm.fit<- lm.model%>%
+  fit(BodyTemp~RunnyNose, analysis)
+```
+
+
+Create clean table
+```{r}
+tidy(lm.fit)
+```
+Temp and having a runny nose are affected.
+
+#apply model to all the predictors
+```{r}
+lm.fit.ALL<-lm.model%>%
+  fit(BodyTemp ~., analysis)
+
+tidy(lm.fit.ALL)
+```
+Bodytemp may effect showing RunnyNose, cough, and pharyngitis 
+
+###
+Logistical Models
+```{r}
+glm.model <- logistic_reg() %>% 
+  set_engine("glm")
+```
+
+Logistical regression for Nausea and RunnyNose
+```{r}
+glm.fit<- glm.model%>%
+  fit(Nausea~RunnyNose, analysis)
+
+tidy(glm.fit)
+```
+P>0.05, not significant between Nausea and RunnyNose
+
+#Logistical regression based on Nausea with all predictors
+```{r}
+glm.fit.ALL<-glm.model%>%
+  fit(Nausea~., analysis)
+tidy(glm.fit.ALL)
+```
+P<0.05, significant effects, Vomit and Diarrhea w/ Nausea
+
+
+

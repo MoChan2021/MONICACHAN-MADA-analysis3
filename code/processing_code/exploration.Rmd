@@ -1,0 +1,211 @@
+---
+title: "Exploration"
+author: "MYC"
+date: "10/15/2021"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+First loading all the default settings and preliminary programs.
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse) #for data processing
+library(here) #to set paths
+```
+
+Path to Processed Data and loading
+```{r}
+data_location <- here::here("data","processed_data","processeddata.rds")
+data<- readRDS(data_location)
+```
+View Summary of new Data, subsetted from the original raw data.
+```{r}
+str(data) #check structure of R object
+glimpse(data) #details of the data up to 4 levels, empty values = "" 
+summary(data)
+```
+
+Important variables:  Outcome= Body temperature and our main categorical outcome is Nausea. 
+We want to see if the other symptoms are correlated with (predict) those outcomes.
+
+Limited selection of other symptoms (Selection of 5, based on vaugely off of the PeptoBismol jingle ):  
+
+1. Nausea
+2. CoughYN
+3. Pharyngitis
+4. Vomit
+5. Diarrhea
+
+Reduce data to limited variables and BodyTemp. Preview to confirm
+```{r}
+SelectData<-data%>% #make into a new data frame
+  #select limited variables and BodyTemp
+  select(Nausea, 
+         CoughYN,
+         Pharyngitis,
+         Vomit,
+         Diarrhea,
+         BodyTemp)%>%
+  #filter for only positive Nausea data, per instruction of prompt as it being the main categorical outcome
+  filter(Nausea=="Yes")
+
+summary(SelectData)
+```
+
+##Summary Table
+```{r}
+SelectData%>%
+  #grouping by Nausea, the main categorical outcome
+  group_by(Nausea,
+           CoughYN, 
+           Pharyngitis, 
+           Vomit, 
+           Diarrhea)%>%  
+  #summarise the data, get observances and mean temp, calculate the standard deviation
+  summarise(
+    n=n(), #to count the number of observances
+    mean=mean(BodyTemp),#calculate mean body temp
+    sd=sd(BodyTemp) #calculate sd (Standard Deviation) of Body temp
+  )%>%
+  #arrange by highest number of n
+  arrange(desc(n)) %>%
+  print()
+
+```
+Most cases with observed experience Nausea, Cough, Pharyngitis with a mean Body temperature of 99.1.
+Only once case where it was just Nausea and none of the other selected variables.
+
+Save of temp and positive for nausea
+```{r}
+save_data_location <- here::here("data","processed_data","SelectData.rds")
+
+saveRDS(SelectData, file = save_data_location)
+```
+
+
+Not satisfied with my version of summary table... so looking at other examples to see how to do this better.
+Found someone using this table1 program. Let's see how it goes.
+```{r}
+
+library(table1)# saw this used in someone else's code, trying it out
+table1(~   BodyTemp+
+           CoughYN+
+           Pharyngitis+ 
+           Vomit+ 
+         # the | splits it to be factor's col variables-- this case of Nausea-.
+           Diarrhea | Nausea, 
+       #use prior data since selecteddata only shows the positive nausea hits
+       data=data, 
+       overall="Total")
+
+```
+This is a very nice table, Need to look into about putting in BodyTemp as the factors in this and not just Nausea
+
+
+```{r}
+
+```
+
+##Histogram/Density plot
+
+Code here is copy pasted and changes in the data source and fill aspects are based on the different comparisons.
+
+By Nausea
+```{r}
+data%>% #using original data to show Yes and No for Nausea
+  ggplot(aes(x=BodyTemp, fill=Nausea)) +
+    geom_density(adjust=1.5,
+                 alpha=.5)+
+  labs(title= "Body temperature of people experencing nausea")
+```
+By Vomit
+```{r}
+SelectData%>%
+  ggplot(aes(x=BodyTemp, fill=CoughYN)) +
+    geom_density(adjust=1.5,
+                 alpha=.5)+
+    labs(title= "Body temperature of people experiencing nausea with a cough")
+
+```
+By Cough
+```{r}
+SelectData%>%
+  ggplot(aes(x=BodyTemp, fill=Pharyngitis)) +
+    geom_density(adjust=1.5,
+                 alpha=.5)+
+    labs(title= "Body temperature of people experiencing nausea with pharyngitis")
+
+```
+
+```{r}
+SelectData%>%
+  ggplot(aes(x=BodyTemp, fill=Vomit)) +
+    geom_density(adjust=1.5,
+                 alpha=.5)+
+    labs(title= "Body temperature of people experiencing nausea and vomitted")
+
+```
+
+```{r}
+SelectData%>%
+  ggplot(aes(x=BodyTemp, fill=Diarrhea)) +
+    geom_density(adjust=1.5,
+                 alpha=.5)+
+    labs(title= "Body temperature of people experiencing nausea with diarrhea")
+
+```
+
+##Scatterplots and Boxplots
+
+```{r}
+#Nausea positive
+
+SelectData%>% #only positive with Nausea
+  ggplot(aes(y=BodyTemp))+
+  geom_violin(aes(x=Pharyngitis, color="Pharyngitis", alpha=.5))+
+  geom_violin(aes(x=Vomit, color="Vomit", alpha=.5))+
+  geom_violin(aes(x=Diarrhea, color="Diarrhea", alpha=.5))+
+  geom_jitter(aes(x=Pharyngitis, color="Pharyngitis"))+
+  geom_jitter(aes(x=Vomit, color="Vomit"))+
+  geom_jitter(aes(x=Diarrhea, color="Diarrhea"))+
+  labs(title="Body temperature Violin graph of symptoms that occured with Nausea")+
+  xlab("Symptom experienced with Nausea")
+
+```
+
+Need to reshape data to get the right output in ggplot
+I think I need to rotate the table to long form? 
+```{r}
+#Pivot Select Data
+PSData<-SelectData%>%
+  group_by(CoughYN, 
+           Pharyngitis, 
+           Vomit, 
+           Diarrhea)%>%
+  summarize( 
+    Temp=mean(BodyTemp),#calculate mean body temp
+    sd=sd(BodyTemp))%>%
+#really unsure if this was correct
+  pivot_longer(
+    cols = c(CoughYN, Pharyngitis,Vomit,Diarrhea),
+    names_to = "Symptoms",
+    values_to = "Presence" )
+
+glimpse(PSData)
+```
+Save Pivoted Data of mean temp and positive for nausea
+```{r}
+save_data_location <- here::here("data","processed_data","PivotSelect.rds")
+
+saveRDS(PSData, file = save_data_location)
+```
+
+
+```{r}
+PSData%>%
+  ggplot(aes(x=Symptoms, y=Temp))+
+  geom_boxplot(aes(color=Presence))+
+  labs(title="Body temperature boxplot of symptoms that occured with Nausea")+
+  xlab("Symptom experienced with Nausea")
+
+```
