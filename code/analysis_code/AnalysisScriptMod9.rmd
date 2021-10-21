@@ -1,0 +1,279 @@
+---
+title: "AnalysisScriptMod9"
+author: "MYC"
+date: "10/20/2021"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+Loading all the default settings and preliminary programs.
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse) #for data processing
+library(here) #to set paths
+library(tidymodels)      # for the recipes package, along with the rest of tidymodels
+library(skimr)           # for variable summaries
+
+```
+Path to Processed Data and loading of cleaned data
+```{r}
+data_location <- here::here("data","processed_data","processeddata.rds")
+data<- readRDS(data_location)
+```
+
+Selection for RunnyNose and limited symptoms in addition to BodyTemp and Nausea
+
+__Reminder__: Outcome of interest is __Body Temp__; Categorical outcome is __Nausea__; Predictor= __RunnyNose__
+```{r}
+Mod9Analysis<-
+  data%>%
+  select(BodyTemp, RunnyNose, Nausea, CoughYN,Pharyngitis, Vomit, Diarrhea)
+glimpse(Mod9Analysis)
+summary(Mod9Analysis)
+
+```
+Changing the dbl data type of BodyTemp into a factor.
+97-99 = normal body temperature
+anything below or above this range will categorize as abnormal temp
+select for this and change BodyTemp to factor
+```{r}
+Mod9AnalysisFCT<-
+  Mod9Analysis%>%
+  mutate(
+  #convert BodyTemp to a factor
+  BodyTemp = ifelse(BodyTemp>= 99, "fever", "normal"),
+  BodyTemp = factor(BodyTemp)
+  )%>%
+  #Exclude missing data
+  na.omit()%>%
+  # For creating models, it is better to have qualitative columns
+  # encoded as factors (instead of character strings)
+  mutate_if(is.character, as.factor)
+
+glimpse(Mod9AnalysisFCT)
+```
+View proportions of the samples with normal temperatures or a fever
+```{r}
+#making a summary table of proportions
+Mod9AnalysisFCT%>%
+  count(RunnyNose)%>%
+  mutate(Proportions = n/sum(n)) #sample/sum of sample
+```
+~34% of samples had a fever from this selection of data. The remaining 66% did not present with a fever. 
+Most people had normal temperatures in this selection.
+
+```{r}
+Mod9AnalysisFCT%>%
+  skimr::skim(BodyTemp, RunnyNose)
+```
+### Data splitting
+Need to split into
+
+1. training set
+2. testing set
+
+Adapting from the tidymodels example using rsample package to create an object that contains info on how to split and 2 more rsample funtions to create the data frames for training and testing
+```{r}
+# Fix the random numbers by setting the seed 
+# This enables the analysis to be reproducible when random numbers are used 
+set.seed(222)
+# Put 3/4 of the data into the training set 
+data_split <- initial_split(Mod9AnalysisFCT, prop = 3/4)
+
+## Create data frames for the two sets:
+train_data <- training(data_split)
+test_data  <- testing(data_split)
+
+```
+##############
+# Data has been split
+##############
+## Create recipies and roles
+__roles are optional in this exercise__
+
+### Simple Logistic regression model
+
+Use a recipe to create new predictors and conduct pre-processing required by model
+
+#### Initiate a new recipe
+```{r}
+Mod9_rec<-
+  recipe(BodyTemp~., data = train_data)
+#formula to the left of "~" = model outcome
+# predictors are to the right of "~"; can be listed of use "." to indicate ALL OTHER variables are predictors
+```
+
+View assigned roles whereby Outcome of BodyTemp with RunnyNose as predictor.
+
+#### Add roles to recipe (optional)
+```{r}
+Mod9_rec<-
+  recipe(BodyTemp~., data = train_data)%>%
+  update_role(Nausea,CoughYN, Pharyngitis, Vomit, Diarrhea, new_role = "ID")
+
+summary(Mod9_rec)
+```
+
+#### Create Features
+```{r}
+Mod9_rec<-
+  recipe(BodyTemp~., data = train_data)%>%
+  update_role(Nausea,CoughYN, Pharyngitis, Vomit, Diarrhea, new_role = "ID")%>%
+  step_dummy(all_nominal_predictors()) %>% 
+  # creates dummy variables as a single factor
+    # the all_nominal_predictors to apply the recipe to several variables at once
+  step_zv(all_predictors()) 
+  #removes columns from data when training set data have a single value
+
+summary(Mod9_rec)
+```
+
+#### Fit a model with a recipe
+```{r}
+#Use logistic regression to model data.
+#Build model specification using parsnip
+lr_mod<-
+  logistic_reg()%>%
+  set_engine("glm")
+```
+
+Want to use recipe over several steps as training and testing the model.
+
+1. Process the recipe using training set.
+2. Apply recipe to training set.
+3. Apply recipe to the test set.
+
+To do so use the workflow package from tidymodels
+```{r}
+Mod9_wflow<-
+  workflow()%>%
+  add_model(lr_mod)%>%
+  add_recipe(Mod9_rec)
+
+Mod9_wflow
+```
+
+#### Prepare recipe and train model from resulting predictors
+```{r}
+Mod9_fit<-
+  Mod9_wflow%>%
+  fit(data=train_data)
+```
+
+Extracting the model or recipe from workflow. Pull fitted model object and see the model coefficients
+```{r}
+Mod9_fit%>%
+  extract_fit_parsnip()%>%
+  tidy()
+```
+
+## Use a trained workflow to predict unseen test data
+
+Does a Runny Nose correlate with a  fever?
+```{r}
+predict(Mod9_fit, test_data)
+```
+
+```{r}
+Mod9_aug<-
+  augment(Mod9_fit, test_data)
+Mod9_aug
+```
+
+```{r}
+Mod9_aug%>%
+  roc_curve(truth=BodyTemp, .pred_fever)%>%
+  autoplot()
+```
+
+#### Estimate area under the curve
+In general, ROC-AUC =0.5 means the model is no good.
+The estimate for this is just barely above this so a RunnyNose isn't a great predictor for a fever if it was at 0.7 it might be useful. so this isn't a great model.
+```{r}
+Mod9_aug%>%
+  roc_auc(truth=BodyTemp, .pred_fever)
+```
+
+
+## Alternative model
+
+Re-do the fitting but with a model that only fits the main predictor to the categorical outcome: _Nausea_.
+
+#### Alterntive recipe
+Let's see if having a cough can predict vomiting
+```{r}
+ALTMod9_rec<-
+  recipe(Nausea~., data = train_data)%>%
+  update_role(BodyTemp,CoughYN, Pharyngitis, Vomit, Diarrhea, new_role = "ID")
+
+summary(ALTMod9_rec)
+```
+#### Fit a model with a recipe and workflow
+
+1. Process the recipe using training set.
+2. Apply recipe to training set.
+3. Apply recipe to the test set.
+
+```{r}
+ALTMod9_wflow<-
+  workflow()%>%
+  add_model(lr_mod)%>%
+  add_recipe(ALTMod9_rec)
+
+ALTMod9_wflow
+```
+#### Prepare recipe and train model from resulting predictors
+```{r}
+ALTMod9_fit<-
+  ALTMod9_wflow%>%
+  fit(data=train_data)
+```
+
+Extracting the model or recipe from workflow. Pull fitted model object and see the model coefficients
+```{r}
+ALTMod9_fit%>%
+  extract_fit_parsnip()%>%
+  tidy()
+```
+## Use a trained workflow to predict unseen test data
+
+If runny noses result in nausea
+
+Predict returns predicted class Yes or No
+```{r}
+predict(ALTMod9_fit, test_data)
+```
+Using augment with the model plus test data to save prediction
+```{r}
+ALTMod9_aug<-
+  augment(ALTMod9_fit, test_data)
+ALTMod9_aug
+```
+Generate and ROC curve.
+Uses the probability of Nausea being present with a Runny nose
+```{r}
+ALTMod9_aug%>%
+  roc_curve(truth=Nausea, .pred_Yes)%>%
+  autoplot()
+```
+
+```{r}
+ALTMod9_aug%>%
+  roc_auc(truth=Nausea, .pred_Yes)
+```
+
+
+###############################################################
+
+
+```{r}
+```
+
+```{r}
+```
+
+```{r}
+```
+
+```{r}
+```
