@@ -20,14 +20,10 @@ Path to Processed Data and loading of cleaned data
 data_location <- here::here("data","processed_data","processeddata.rds")
 data<- readRDS(data_location)
 ```
-
-Selection for RunnyNose and limited symptoms in addition to BodyTemp and Nausea
-
 __Reminder__: Outcome of interest is __Body Temp__; Categorical outcome is __Nausea__; Predictor= __RunnyNose__
 ```{r}
 Mod9Analysis<-
-  data%>%
-  select(BodyTemp, RunnyNose, Nausea, CoughYN,Pharyngitis, Vomit, Diarrhea)
+  data
 glimpse(Mod9Analysis)
 summary(Mod9Analysis)
 
