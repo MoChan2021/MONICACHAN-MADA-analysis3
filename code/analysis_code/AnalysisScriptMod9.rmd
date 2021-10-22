@@ -240,14 +240,74 @@ Curve produced here and ROC_AUC results show it is not a great predictor, the va
 Please see lines 19 and 27 for the start of code chunks with relevant initial data -MYC
 
 ###############################################################
-```{r}
+# Module 9 part 2 Contributor: Dawson Dobash
+
+## Body Temperature vs. all predictors
+
+Below I am creating the new full model recipe for body temperature, making a path to the linear modeling, and combining them into a workflow to create a fitted object.
+
+```{r Recipe, Model, and Workflow}
+#Creating recipe for full model
+bodytemp_rec = recipe(BodyTemp ~ ., data= Mod9Analysis)
+
+#Creating the linear model type
+lm_mod <- linear_reg() %>% set_engine("lm")
+
+#Creating a workflow that adds the model type and the recipe I previously made
+bodytemp_wrkflow <- workflow() %>% add_model(lm_mod) %>% add_recipe(bodytemp_rec)
+
+#Creating a fit object
+bodytemp_fit <- bodytemp_wrkflow %>% fit(data = train_data)
+
+#Looking at the details of this fitted model (for train and test)
+bodytemp_fit %>% extract_fit_parsnip() %>% tidy()
 ```
 
-```{r}
+
+We can see by the tidy table that there are definitely some significant factors within the full prediction list. 
+
+Next we will create our augments for both the test and training data. These augments will be used to find out what the RMSE is.
+```{r Augment and RMSE for full model}
+#Making an augment for both train and test data
+bodytemp_aug_test = augment(bodytemp_fit, test_data)
+bodytemp_aug_train = augment(bodytemp_fit, train_data)
+
+#Finding the RMSE for each model
+bodytemp_aug_test %>% rmse(BodyTemp, .pred)
+bodytemp_aug_train %>% rmse(BodyTemp, .pred)
+
 ```
 
-```{r}
+We get a RMSE of 1.15 (test data) and 1.11 (train data) from predicting body temperature by all predictors.
+
+## Body Temperature vs. runny nose
+
+Below we go through the same process as above but with runny nose as the only predictor.
+
+```{r setting recipe and model type then applying workflow}
+#Creating recipe for full model
+bodytemp_rec2 = recipe(BodyTemp ~ RunnyNose, data= Mod9Analysis)
+
+#Creating a workflow that adds the model type and the recipe I previously made
+bodytemp_wrkflow2 <- workflow() %>% add_model(lm_mod) %>% add_recipe(bodytemp_rec2)
+
+#Creating a fit object
+bodytemp_fit2 <- bodytemp_wrkflow2 %>% fit(data = train_data)
+
+#Looking at the details of this fitted model
+bodytemp_fit2 %>% extract_fit_parsnip() %>% tidy()
 ```
 
-```{r}
+Looking at the tidy table, we can see the runny nose is a significant predictor for body temperature.
+
+```{r Augment and RMSE}
+#Making an augment for both train and test data
+bodytemp_aug_test2 = augment(bodytemp_fit2, test_data)
+bodytemp_aug_train2 = augment(bodytemp_fit2, train_data)
+
+#Finding the RMSE for each model
+bodytemp_aug_test2 %>% rmse(BodyTemp, .pred)
+bodytemp_aug_train2 %>% rmse(BodyTemp, .pred)
 ```
+
+After creating the augments for each train and testing data sets for the model of runny nose only being the predictor, we get a RMSE of 1.13 (Test data) and 1.21 (Train data). By comparing these values to the full models, the RMSE are around the same value. It is hard to say which is better. If we only look at the test data, they are fairly the same but there is a higher RMSE for the train data with only runny nose as the predictor. However I would say overall, the complete model is probably better because the RMSE's for the training and test are similar and on average lower than the simple model. 
